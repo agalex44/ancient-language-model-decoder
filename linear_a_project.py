@@ -273,106 +273,136 @@ class LinguisticAnalyzer:
         return pd.DataFrame(mi_matrix, index=signs, columns=signs)
 
 # ============================================================================
-# 4. COMPUTER VISION PIPELINE
+# 4. COMPUTER VISION PIPELINE (optional, requires torch/torchvision)
 # ============================================================================
 
-import torch
-import torch.nn as nn
-from torchvision import models, transforms
-from PIL import Image
+try:
+    import torch
+    import torch.nn as nn
+    from torchvision import models, transforms
+    from PIL import Image
+    TORCH_AVAILABLE = True
+except Exception:
+    # Torch or torchvision not available in lightweight environments.
+    TORCH_AVAILABLE = False
+    torch = None
+    nn = None
+    models = None
+    transforms = None
+    Image = None
 
-class LinearASignDetector:
-    """YOLO-based sign detection in tablet images"""
-    
-    def __init__(self, model_path: Optional[str] = None):
-        # Placeholder for YOLOv8 - requires ultralytics package
-        self.model = None  # Load pretrained YOLO
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if TORCH_AVAILABLE:
+    class LinearASignDetector:
+        """YOLO-based sign detection in tablet images"""
         
-    def detect_signs(self, image_path: str) -> List[Dict]:
-        """Detect sign bounding boxes in image"""
-        # Returns: [{'bbox': [x1, y1, x2, y2], 'confidence': float}, ...]
-        raise NotImplementedError("Requires trained YOLO model")
-
-class SignClassifier(nn.Module):
-    """ResNet-based sign classification"""
-    
-    def __init__(self, num_classes: int = 90):
-        super().__init__()
-        self.model = models.resnet50(pretrained=True)
-        self.model.fc = nn.Linear(self.model.fc.in_features, num_classes)
-        
-    def forward(self, x):
-        return self.model(x)
-
-class CVPipeline:
-    """End-to-end computer vision pipeline"""
-    
-    def __init__(self, detector: LinearASignDetector, classifier: SignClassifier):
-        self.detector = detector
-        self.classifier = classifier
-        self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                               std=[0.229, 0.224, 0.225])
-        ])
-        
-    def process_tablet_image(self, image_path: str) -> List[Dict]:
-        """Extract sign sequence from tablet image"""
-        detections = self.detector.detect_signs(image_path)
-        image = Image.open(image_path)
-        
-        results = []
-        for det in detections:
-            x1, y1, x2, y2 = det['bbox']
-            sign_crop = image.crop((x1, y1, x2, y2))
-            sign_tensor = self.transform(sign_crop).unsqueeze(0)
+        def __init__(self, model_path: Optional[str] = None):
+            # Placeholder for YOLOv8 - requires ultralytics package
+            self.model = None  # Load pretrained YOLO
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             
-            with torch.no_grad():
-                logits = self.classifier(sign_tensor)
-                probs = torch.softmax(logits, dim=1)
-                pred_class = torch.argmax(probs, dim=1).item()
-                confidence = probs[0, pred_class].item()
-            
-            results.append({
-                'bbox': det['bbox'],
-                'predicted_sign': pred_class,
-                'confidence': confidence
-            })
+        def detect_signs(self, image_path: str) -> List[Dict]:
+            """Detect sign bounding boxes in image"""
+            # Returns: [{'bbox': [x1, y1, x2, y2], 'confidence': float}, ...]
+            raise NotImplementedError("Requires trained YOLO model")
+
+    class SignClassifier(nn.Module):
+        """ResNet-based sign classification"""
         
-        return sorted(results, key=lambda x: x['bbox'][0])  # Left-to-right
+        def __init__(self, num_classes: int = 90):
+            super().__init__()
+            self.model = models.resnet50(pretrained=True)
+            self.model.fc = nn.Linear(self.model.fc.in_features, num_classes)
+            
+        def forward(self, x):
+            return self.model(x)
+
+    class CVPipeline:
+        """End-to-end computer vision pipeline"""
+        
+        def __init__(self, detector: LinearASignDetector, classifier: SignClassifier):
+            self.detector = detector
+            self.classifier = classifier
+            self.transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                                   std=[0.229, 0.224, 0.225])
+            ])
+            
+        def process_tablet_image(self, image_path: str) -> List[Dict]:
+            """Extract sign sequence from tablet image"""
+            detections = self.detector.detect_signs(image_path)
+            image = Image.open(image_path)
+            
+            results = []
+            for det in detections:
+                x1, y1, x2, y2 = det['bbox']
+                sign_crop = image.crop((x1, y1, x2, y2))
+                sign_tensor = self.transform(sign_crop).unsqueeze(0)
+                
+                with torch.no_grad():
+                    logits = self.classifier(sign_tensor)
+                    probs = torch.softmax(logits, dim=1)
+                    pred_class = torch.argmax(probs, dim=1).item()
+                    confidence = probs[0, pred_class].item()
+                
+                results.append({
+                    'bbox': det['bbox'],
+                    'predicted_sign': pred_class,
+                    'confidence': confidence
+                })
+            
+            return sorted(results, key=lambda x: x['bbox'][0])  # Left-to-right
+else:
+    # Define safe placeholders so modules importing this file don't fail at import-time
+    class LinearASignDetector:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("Computer vision features require 'torch' and 'torchvision' packages.")
+
+    class SignClassifier:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("Computer vision features require 'torch' and 'torchvision' packages.")
+
+    class CVPipeline:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("Computer vision features require 'torch' and 'torchvision' packages.")
 
 # ============================================================================
 # 5. TRANSFER LEARNING MODULE
 # ============================================================================
 
-class MultiTaskLinearModel(nn.Module):
-    """Joint Linear A + Linear B sequence modeling"""
-    
-    def __init__(self, vocab_size_a: int, vocab_size_b: int, 
-                 embedding_dim: int = 256, hidden_dim: int = 512):
-        super().__init__()
-        # Shared embedding for common signs
-        self.shared_embedding = nn.Embedding(vocab_size_a, embedding_dim)
+if TORCH_AVAILABLE:
+    class MultiTaskLinearModel(nn.Module):
+        """Joint Linear A + Linear B sequence modeling"""
         
-        # Separate LSTMs for each script
-        self.lstm_a = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        self.lstm_b = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        
-        # Prediction heads
-        self.head_a = nn.Linear(hidden_dim, vocab_size_a)
-        self.head_b = nn.Linear(hidden_dim, vocab_size_b)
-        
-    def forward(self, x, script='a'):
-        emb = self.shared_embedding(x)
-        
-        if script == 'a':
-            out, _ = self.lstm_a(emb)
-            return self.head_a(out)
-        else:
-            out, _ = self.lstm_b(emb)
-            return self.head_b(out)
+        def __init__(self, vocab_size_a: int, vocab_size_b: int, 
+                     embedding_dim: int = 256, hidden_dim: int = 512):
+            super().__init__()
+            # Shared embedding for common signs
+            self.shared_embedding = nn.Embedding(vocab_size_a, embedding_dim)
+            
+            # Separate LSTMs for each script
+            self.lstm_a = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+            self.lstm_b = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+            
+            # Prediction heads
+            self.head_a = nn.Linear(hidden_dim, vocab_size_a)
+            self.head_b = nn.Linear(hidden_dim, vocab_size_b)
+            
+        def forward(self, x, script='a'):
+            emb = self.shared_embedding(x)
+            
+            if script == 'a':
+                out, _ = self.lstm_a(emb)
+                return self.head_a(out)
+            else:
+                out, _ = self.lstm_b(emb)
+                return self.head_b(out)
+else:
+    # Placeholder that raises an informative error if used without torch
+    class MultiTaskLinearModel:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("Transfer-learning models require 'torch' to be installed.")
 
 # ============================================================================
 # 6. MAIN EXECUTION PIPELINE

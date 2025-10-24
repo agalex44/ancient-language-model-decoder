@@ -2,6 +2,8 @@
 """
 Visualization utilities for Linear A analysis
 """
+import argparse
+import json
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -69,4 +71,53 @@ class Visualizer:
         plt.close()
 
 if __name__ == '__main__':
-    print("Visualization module loaded")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--results', required=False, help='Results dir or file', default='outputs/results/linguistic_analysis.json')
+    parser.add_argument('--output', required=False, help='Output dir for plots', default='outputs/visualizations/')
+    args = parser.parse_args()
+    
+    viz = Visualizer(output_dir=args.output)
+    
+    results_path = Path(args.results)
+    if results_path.is_dir():
+        results_file = results_path / 'linguistic_analysis.json'
+    else:
+        results_file = results_path
+    
+    if results_file.exists():
+        data = json.load(open(results_file, 'r'))
+        # Build compatible structure for plot calls
+        try:
+            comp = {
+                'linear_a': {
+                    'unigram': data['entropy'].get('unigram', 0),
+                    'bigram': data['entropy'].get('bigram', 0),
+                    'conditional': data['entropy'].get('conditional', 0)
+                },
+                'linear_b': {
+                    'unigram': data.get('linear_b', {}).get('unigram', 0),
+                    'bigram': data.get('linear_b', {}).get('bigram', 0),
+                    'conditional': data.get('linear_b', {}).get('conditional', 0)
+                },
+                'random': {
+                    'unigram': data.get('random', {}).get('unigram', 0),
+                    'bigram': data.get('random', {}).get('bigram', 0),
+                    'conditional': data.get('random', {}).get('conditional', 0)
+                }
+            }
+            viz.plot_entropy_comparison(comp)
+        except Exception:
+            print("Entropy comparison skipped (unexpected format)")
+        
+        # Zipf plot if ngram frequencies exist
+        try:
+            freqs = data['ngrams']['unigrams']
+            freqlist = sorted([v for v in freqs.values()], reverse=True)
+            ranks = list(range(1, len(freqlist)+1))
+            viz.plot_zipf(ranks, freqlist)
+        except Exception:
+            print("Zipf plot skipped (missing ngram frequencies)")
+    
+    else:
+        print(f"No results file found at {results_file}")
+    print("Visualization module complete")
