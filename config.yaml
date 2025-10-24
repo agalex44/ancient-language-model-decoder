@@ -1,0 +1,43 @@
+# Data paths
+data:
+  raw_corpus: "data/raw/linear_a_corpus/"
+  images: "data/raw/images/"
+  processed: "data/processed/"
+  sign_inventory: "data/processed/sign_inventory.json"
+
+# Model settings
+models:
+  embedding_dim: 256
+  hidden_dim: 512
+  num_signs: 90
+  
+  cv:
+    detector: "yolov8m"
+    classifier: "resnet50"
+    image_size: 224
+    
+  transformer:
+    num_layers: 6
+    num_heads: 8
+    dropout: 0.1
+
+# Training
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  device: "cuda"  # or "cpu"
+  
+# Bayesian
+bayesian:
+  num_samples: 10000
+  num_chains: 4
+  burn_in: 2000
+  confidence_threshold: 0.6
+
+# Output paths
+output:
+  models: "outputs/models/"
+  results: "outputs/results/"
+  visualizations: "outputs/visualizations/"
+  hypotheses: "outputs/hypotheses/"
